@@ -1,0 +1,164 @@
+import streamlit as st
+from langchain_community.llms import Ollama
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
+from PyPDF2 import PdfReader
+
+# initialization
+
+st.set_page_config(page_title= "Use Case", layout="wide")
+
+#initialize llm
+@st.cache_resource
+def load_llm():
+    return Ollama(model = "llama3:latest")
+
+llm = load_llm()
+
+if "stage" not in st.session_state:
+    st.session_state.stage = "login"
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory()
+
+# agent configs
+
+#Bell - customer agent
+
+bell_prompt = PromptTemplate(
+    input_variables=["history", "input"],
+    template= """Your are 'Bell', a helpful and emphatetic AI Assistant for RLA Insurance.
+                You are helping Mr. Smith lodge an income protection claim. keep your answers concise, polite,
+                and guide him to provide his policy number and upload his medical documents.
+                
+                Current Conversation:
+                {history}
+                Human: {input}
+                Bell:"""
+)
+bell_chain = ConversationChain(
+    llm = llm,
+    memory = st.session_state.memory,
+    prompt = bell_prompt
+)
+
+#claims Xpert
+
+def claims_xpert_analyze(text_content):
+    xpert_prompt = PromptTemplate.from_template(
+        """You are 'ClaimsXpert', an AI assistant for RLA Insurance Case Managers.
+        Review the following extracted text from a customer's claim document.
+        Summarize the nature of th injury/illness, any recommended rest period, and flag if anything seems missing.
+        
+        Document Text: {text}
+        Summary for Case Manager:."""
+    )
+    chain = xpert_prompt | llm
+    return chain.invoke({"text": text_content})
+
+def extract_text_from_pdf(pdf_file):
+    reader = PdfReader(pdf_file)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text()
+    return text
+
+### user interface
+
+st.title("RLA Insurance")
+
+# Stage 1 MFA and Login
+
+if st.session_state.stage == "login":
+    st.subheader("Login and Authentication")
+    st.write ("Welcome, Mr. Smith. Please Verify your Identity")
+    
+    otp_mobile = st.text_input("Enter OPT sent to mobile:", type="password")
+    otp_email = st.text_input("Enter OPT sent to Email:", type="password")
+
+    if st.button("Verify and Login"):
+        if otp_mobile and otp_email:
+            st.success("Authencation Successful")
+            st.session_state.stage = "chat"
+            st.rerun()
+        else:
+            st.error("Please enter both OTPs")
+## chat with bell
+    elif st.session_state.stage == "chat":
+        st.subheader("Chat with Bell")
+        ## chat history
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        ## chat input
+        if prompt := st.chat_input("Type your message here(eg 'i need to lodge a new claim')"):
+            #adding user message to UI
+            st.session_state.chat_history.append({"role": "user", "content": "prompt"})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            # bells response
+
+            with st.chat_message("assistant"):
+                with st.spinner("Bell is typing......"):
+                    response = bell_chain.predict(input = prompt)
+                    st.markdown(response)
+            st.session_state.chat_history.append ({"role" : "assistant", "content" : "response"})
+        st.divider()
+        if st.button("Proceed to Document Upload"):
+            st.session_state.stage = "Upload"
+            st.rerun()
+    
+    ## stage 3 doc upload n claimxpert
+
+    elif st.session_state.stage == "upload":
+        st.subheader("Document Upload")
+        st.write("Please upload youur completed Statement of Claim and Medical Forms.")
+
+        uploaded_file = st.file_uploader("Upload PDF Documents", type=["pdf"])
+
+        if uploaded_file is not None:
+            st.success(f"{uploaded_file.name} Uploaded Successfully!")
+        if st.button("Submit Claim"):
+            st.session_state.uploaded_file = uploaded_file
+            st.session_state.stage = "assessment"
+            st.rerun()
+    ### stage 4  Case Manager Claimsxpert
+
+    elif st.session_state.stage == "assessment":
+        st.subheader("Case Manager View")
+        st.info ("The claim has been routed to Case Manager Dan.")
+
+        st.write("**Claims Xpert AI Analysis in Progress...**")
+
+        with st.spinner("Extracting text and medical documents..."):
+            # 1. Extract Text
+            document_text = extract_text_from_pdf(st.session_state.uploaded_file)
+
+            #2. run Claim Xpert AI
+
+            analysis_result = claims_xpert_analyze(document_text)
+        st.success("Analysis Complete.")
+
+        st.markdown("Caims Xpert Summary Report")
+        st.write(analysis_result)
+
+        st.divider()
+
+        if st.button("Start Over"):
+            st.session_state.clear()
+            st.rerun()
+
+this is the code, after giving dummy in the authorization page, the UI goes blank
+C:\Users\sujit\Desktop\rla\app.py:16: LangChainDeprecationWarning: The class `Ollama` was deprecated in LangChain 0.3.1 and will be removed in 1.0.0. An updated version of the class exists in the :class:`~langchain-ollama package and should be used instead. To use it run `pip install -U :class:`~langchain-ollama` and import as `from :class:`~langchain_ollama import OllamaLLM``.
+  return Ollama(model = "llama3:latest")
+C:\Users\sujit\Desktop\rla\app.py:25: LangChainDeprecationWarning: Please see the migration guide at: https://python.langchain.com/docs/versions/migrating_memory/
+  st.session_state.memory = ConversationBufferMemory()
+C:\Users\sujit\Desktop\rla\app.py:42: LangChainDeprecationWarning: The class `ConversationChain` was deprecated in LangChain 0.2.7 and will be removed in 1.0. Use :class:`~langchain_core.runnables.history.RunnableWithMessageHistory` instead.
+  bell_chain = ConversationChain(
+
+this is in terminal,
+is this working fine, i should wait or is there any eror
