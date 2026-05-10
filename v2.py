@@ -7,21 +7,20 @@ from langchain.prompts import PromptTemplate
 from PyPDF2 import PdfReader
 from fake_db import load_fake_db
 
-# ------------------ CONFIG ------------------
 st.set_page_config(page_title="RLA Insurance", layout="wide")
 
-# ------------------ LLM ------------------
+#LLM
 @st.cache_resource
 def load_llm():
     return Ollama(model="llama3:latest")
 
 llm = load_llm()
 
-# ------------------ FAKE DATABASE ------------------
+#Loading fake db
 if "db" not in st.session_state:
     st.session_state.db = load_fake_db()
 
-# ------------------ SESSION STATE ------------------
+#Session State
 if "stage" not in st.session_state:
     st.session_state.stage = "login"
 
@@ -34,10 +33,9 @@ if "memory" not in st.session_state:
 if "current_policy" not in st.session_state:
     st.session_state.current_policy = None
 
-# ------------------ ROLE SWITCH ------------------
 role = st.sidebar.selectbox("Login as", ["Customer", "Case Manager (Dan)"])
 
-# ------------------ PROMPT ------------------
+# bell Prompt
 def get_bell_prompt(status):
     return PromptTemplate(
         input_variables=["history", "input"],
@@ -60,7 +58,7 @@ Human: {{input}}
 Bell:"""
     )
 
-# ------------------ PDF TEXT ------------------
+# PyPDF
 def extract_text_from_pdf(pdf_file):
     reader = PdfReader(pdf_file)
     text = ""
@@ -70,7 +68,7 @@ def extract_text_from_pdf(pdf_file):
             text += content
     return text
 
-# ------------------ CLAIM ANALYSIS ------------------
+# ClaimXpert prompt
 def claims_xpert_analyze(text_content):
     prompt = PromptTemplate.from_template(
         """Summarize:
@@ -86,14 +84,12 @@ Summary:"""
     chain = prompt | llm
     return chain.invoke({"text": text_content})
 
-# =========================================================
-# ===================== CUSTOMER FLOW =====================
-# =========================================================
+# UI Flow
 if role == "Customer":
 
     st.title("RLA Insurance - Customer Portal")
 
-    # ---------------- LOGIN ----------------
+    # Login
     if st.session_state.stage == "login":
         st.subheader("Login")
 
@@ -108,7 +104,7 @@ if role == "Customer":
             else:
                 st.error("Invalid Policy Number")
 
-    # ---------------- CHAT ----------------
+    # Chat
     elif st.session_state.stage == "chat":
 
         policy = st.session_state.current_policy
@@ -151,7 +147,7 @@ if role == "Customer":
                 st.session_state.stage = "upload"
                 st.rerun()
 
-    # ---------------- UPLOAD ----------------
+    # Docuument Upload
     elif st.session_state.stage == "upload":
 
         st.subheader("Upload Documents")
@@ -177,8 +173,7 @@ if role == "Customer":
                 st.rerun()
             else:
                 st.error("Upload document first")
-
-    # ---------------- ASSESSMENT ----------------
+                
     elif st.session_state.stage == "assessment":
 
         st.subheader("Processing Claim...")
@@ -186,7 +181,6 @@ if role == "Customer":
         policy = st.session_state.current_policy
         data = st.session_state.db[policy]
 
-    # ✅ Only run once
         if data["analysis"] is None:
 
             file = data["documents"]
@@ -201,16 +195,13 @@ if role == "Customer":
         else:
             st.info("Analysis already completed")
 
-    # ✅ Always display stored result
         st.write("### AI Summary")
         st.write(st.session_state.db[policy]["analysis"])
 
         if st.button("Back to Chat"):
             st.session_state.stage = "chat"
             st.rerun()
-# =========================================================
-# ===================== DAN DASHBOARD =====================
-# =========================================================
+# DAN DASHBOARD 
 elif role == "Case Manager (Dan)":
 
     st.title("Case Manager Dashboard")
@@ -228,7 +219,6 @@ elif role == "Case Manager (Dan)":
             with st.expander("View Analysis"):
                 st.write(data["analysis"])
 
-        # Actions only for pending
         if data["status"] == "Pending":
 
             col1, col2 = st.columns(2)
